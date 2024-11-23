@@ -4,3 +4,4 @@ pytz
 flasgger
 Flask-SQLAlchemy
 gunicorn
+flask_cors
