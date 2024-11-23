@@ -100,17 +100,52 @@ def start_assessment():
 
 @app.route('/complete_assessment', methods=['POST'])
 def complete_assessment():
+    """
+    Complete the assessment by providing the end time.
+    ---
+    parameters:
+        - name: end_time
+          in: body
+          description: The end time in ISO 8601 format
+          required: true
+          schema:
+            type: string
+            format: date-time
+            example: "2024-11-23T14:45:00Z"
+    responses:
+        200:
+            description: Assessment completed successfully
+            schema:
+                type: object
+                properties:
+                    message:
+                        type: string
+                        example: "Assessment completed"
+                    end_time:
+                        type: string
+                        example: "2024-11-23T14:45:00Z"
+                    total_time:
+                        type: integer
+                        example: 3600
+        400:
+            description: Invalid request format or missing parameters
+        404:
+            description: No ongoing assessment found
+    """
     data = request.get_json(silent=True)
-    if not request.is_json:
-        return jsonify({"error": "Content-Type must be application/json"}), 400
-    if not data or 'end_time' not in data:
-        return jsonify({"error": "End time is required"}), 400
+    if not request.is_json or not data or 'end_time' not in data:
+        return jsonify({"error": "End time is required in JSON format"}), 400
 
     end_time = data['end_time']
+    print(f"Received end_time: {end_time}")  # Log the end_time for debugging purposes
+
     try:
+        # Try parsing the end_time with different formats
         end_time_obj = datetime.strptime(end_time, '%Y-%m-%dT%H:%M:%S')
         end_time_obj = IST.localize(end_time_obj) if end_time_obj.tzinfo is None else end_time_obj
-    except ValueError:
+    except ValueError as e:
+        # Log the error for debugging
+        print(f"Error parsing end_time: {str(e)}")
         return jsonify({"error": "Invalid end_time format. Use ISO 8601 format like '2024-11-23T14:45:00Z'"}), 400
 
     with sqlite3.connect('timer.db') as conn:
@@ -121,12 +156,7 @@ def complete_assessment():
         if not row:
             return jsonify({"error": "No ongoing assessment found."}), 404
 
-        assessment_id = row[0]
-        start_time = row[1]
-
-        if not start_time:
-            return jsonify({"error": "Start time is missing in the database"}), 500
-
+        assessment_id, start_time = row
         try:
             start_time_obj = datetime.strptime(start_time, '%Y-%m-%dT%H:%M:%S')
             start_time_obj = IST.localize(start_time_obj) if start_time_obj.tzinfo is None else start_time_obj
@@ -134,8 +164,7 @@ def complete_assessment():
             return jsonify({"error": "Invalid start_time format in database"}), 500
 
         total_time = int((end_time_obj - start_time_obj).total_seconds())
-
-        cursor.execute('''UPDATE timer SET end_time = ?, total_time = ? WHERE id = ?''', 
+        cursor.execute("UPDATE timer SET end_time = ?, total_time = ? WHERE id = ?", 
                        (end_time, total_time, assessment_id))
 
     return jsonify({
@@ -143,6 +172,7 @@ def complete_assessment():
         "end_time": end_time,
         "total_time": total_time
     })
+
 init_db()
 
 if __name__ == "__main__":
