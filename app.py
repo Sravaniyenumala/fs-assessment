@@ -97,7 +97,7 @@ def start_assessment():
     conn.close()
     
     return jsonify({"message": "Assessment started", "start_time": fork_time})
-
+    
 @app.route('/complete_assessment', methods=['POST'])
 def complete_assessment():
     """
@@ -105,13 +105,11 @@ def complete_assessment():
     ---
     parameters:
         - name: end_time
-          in: body
+          in: formData
           description: The end time in ISO 8601 format
           required: true
-          schema:
-            type: string
-            format: date-time
-            example: "2024-11-23T14:45:00Z"
+          type: string
+          example: "2024-11-23T14:45:00Z"
     responses:
         200:
             description: Assessment completed successfully
@@ -132,15 +130,17 @@ def complete_assessment():
         404:
             description: No ongoing assessment found
     """
-    data = request.get_json(silent=True)
-    if not request.is_json or not data or 'end_time' not in data:
-        return jsonify({"error": "End time is required in JSON format"}), 400
+    # Get the 'end_time' from form data (not JSON)
+    end_time = request.form.get('end_time')
+    
+    # Check if 'end_time' is missing
+    if not end_time:
+        return jsonify({"error": "End time is required"}), 400
 
-    end_time = data['end_time']
     print(f"Received end_time: {end_time}")  # Log the end_time for debugging purposes
 
     try:
-        # Try parsing the end_time with different formats
+        # Try parsing the end_time with ISO format
         end_time_obj = datetime.strptime(end_time, '%Y-%m-%dT%H:%M:%S')
         end_time_obj = IST.localize(end_time_obj) if end_time_obj.tzinfo is None else end_time_obj
     except ValueError as e:
