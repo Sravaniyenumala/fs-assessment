@@ -25,6 +25,11 @@ def init_db():
     conn.commit()
     conn.close()
 
+@app.route('/')
+def home():
+    return "Welcome to the API"
+
+
 def get_github_fork_time():
     try:
         token = os.environ.get('GITHUB_TOKEN')
