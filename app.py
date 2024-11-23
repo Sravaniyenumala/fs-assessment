@@ -1,41 +1,41 @@
-import sqlite3
-from flask import Flask, request, jsonify
-import requests
-from datetime import datetime
 import os
-from flasgger import Swagger
+import sqlite3
 import pytz
+from flask import Flask, request, jsonify
+from datetime import datetime
+import requests
+from flasgger import Swagger
 from flask_cors import CORS
 
 # Initialize Flask app
 app = Flask(__name__)
 swagger = Swagger(app)
-CORS(app, resources={r"/*": {"origins": "*"}}) 
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 IST = pytz.timezone('Asia/Kolkata')
 
+start_time_obj=""
+
+# Database Initialization Function
 def init_db():
-    conn = sqlite3.connect('timer.db')
+    conn = sqlite3.connect('assessment.db')
     cursor = conn.cursor()
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS timer (
+        CREATE TABLE IF NOT EXISTS assessments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            start_time TEXT,
-            end_time TEXT,
-            total_time INTEGER
+            assessment_start_time TEXT,
+            assessment_end_time TEXT,
+            total_time INTEGER,
+            assessment_id INTEGER
         )
     ''')
     conn.commit()
     conn.close()
 
-@app.route('/')
-def home():
-    return "Welcome to the API"
-
-
+# Function to get GitHub repository fork time (as assessment_start_time)
 def get_github_fork_time():
     try:
-        token = os.environ.get('GITHUB_TOKEN')
+        token = os.environ.get('GITHUB_TOKEN')  # Replace with your GitHub token if needed
         url = "https://api.github.com/repos/Sravaniyenumala/fs-assessment"
         headers = {
             'Authorization': f'token {token}'
@@ -47,9 +47,9 @@ def get_github_fork_time():
             fork_created_at = repo_details.get('created_at')
             if fork_created_at:
                 utc_time = datetime.strptime(fork_created_at, '%Y-%m-%dT%H:%M:%SZ')
-                utc_time = pytz.utc.localize(utc_time)  
-                ist_time = utc_time.astimezone(IST) 
-                return ist_time.strftime('%Y-%m-%dT%H:%M:%S') 
+                utc_time = pytz.utc.localize(utc_time)
+                ist_time = utc_time.astimezone(IST)
+                return ist_time.strftime('%Y-%m-%dT%H:%M:%S')
             else:
                 print("Could not find 'created_at' timestamp for this repository.")
                 return None
@@ -60,51 +60,51 @@ def get_github_fork_time():
         print(f"Error: {str(e)}")
         return None
 
+# API Route to Start Assessment
 @app.route('/start_assessment', methods=['GET'])
 def start_assessment():
     """
-    This endpoint retrives start time from github
-    ---
+    Start the assessment by fetching the GitHub fork time.
+    --- 
     responses:
         200:
-            description: Assessment started successfully
+            description: Assessment started successfully.
             schema:
                 type: object
                 properties:
                     message:
                         type: string
-                        example: Assessment started
-                    start_time:
+                        example: "Assessment started successfully."
+                    assessment_start_time:
                         type: string
                         example: "2024-11-23T13:45:00Z"
         500:
-            description: Unable to fetch GitHub fork time
-            schema:
-                type: object
-                properties:
-                    error:
-                        type: string
-                        example: Unable to fetch GitHub fork time.
+            description: Error in fetching GitHub data.
     """
-    fork_time = get_github_fork_time()
-    if not fork_time:
+    start_time = get_github_fork_time()
+    start_time_obj=start_time
+    if not start_time:
         return jsonify({"error": "Unable to fetch GitHub fork time."}), 500
-   
-    conn = sqlite3.connect('timer.db')
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO timer (start_time) VALUES (?)", (fork_time,))
-    conn.commit()
-    conn.close()
     
-    return jsonify({"message": "Assessment started", "start_time": fork_time})
-    
+    # Save start time in the database
+    with sqlite3.connect('assessment.db') as conn:
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO assessments (assessment_start_time) VALUES (?)", (start_time,))
+        conn.commit()
+
+    return jsonify({
+        "message": "Assessment started successfully.",
+        "assessment_start_time": start_time
+    })
+
+# API Route to Complete Assessment
 @app.route('/complete_assessment', methods=['POST'])
 def complete_assessment():
     """
     Complete the assessment by providing the end time.
     ---
     parameters:
-        - name: end_time
+        - name: assessment_end_time
           in: formData
           description: The end time in ISO 8601 format
           required: true
@@ -112,68 +112,42 @@ def complete_assessment():
           example: "2024-11-23T14:45:00Z"
     responses:
         200:
-            description: Assessment completed successfully
+            description: Assessment completed successfully.
             schema:
                 type: object
                 properties:
                     message:
                         type: string
-                        example: "Assessment completed"
-                    end_time:
+                        example: "Assessment completed successfully."
+                    assessment_end_time:
                         type: string
                         example: "2024-11-23T14:45:00Z"
                     total_time:
                         type: integer
                         example: 3600
         400:
-            description: Invalid request format or missing parameters
+            description: Invalid request or missing parameters.
         404:
-            description: No ongoing assessment found
+            description: No ongoing assessment found.
     """
-    # Get the 'end_time' from form data (not JSON)
-    end_time = request.form.get('end_time')
-    
-    # Check if 'end_time' is missing
-    if not end_time:
-        return jsonify({"error": "End time is required"}), 400
+    assessment_end_time = request.form.get('assessment_end_time')
 
-    print(f"Received end_time: {end_time}")  # Log the end_time for debugging purposes
 
-    try:
-        # Try parsing the end_time with ISO format
-        end_time_obj = datetime.strptime(end_time, '%Y-%m-%dT%H:%M:%S')
-        end_time_obj = IST.localize(end_time_obj) if end_time_obj.tzinfo is None else end_time_obj
-    except ValueError as e:
-        # Log the error for debugging
-        print(f"Error parsing end_time: {str(e)}")
-        return jsonify({"error": "Invalid end_time format. Use ISO 8601 format like '2024-11-23T14:45:00Z'"}), 400
+    # Parse the end time
 
-    with sqlite3.connect('timer.db') as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, start_time FROM timer WHERE end_time IS NULL ORDER BY id DESC LIMIT 1")
-        row = cursor.fetchone()
+    end_time_obj = assessment_end_time.split("T")[1].rstrip('Z')
 
-        if not row:
-            return jsonify({"error": "No ongoing assessment found."}), 404
+    print(end_time_obj)
+       
 
-        assessment_id, start_time = row
-        try:
-            start_time_obj = datetime.strptime(start_time, '%Y-%m-%dT%H:%M:%S')
-            start_time_obj = IST.localize(start_time_obj) if start_time_obj.tzinfo is None else start_time_obj
-        except ValueError:
-            return jsonify({"error": "Invalid start_time format in database"}), 500
-
-        total_time = int((end_time_obj - start_time_obj).total_seconds())
-        cursor.execute("UPDATE timer SET end_time = ?, total_time = ? WHERE id = ?", 
-                       (end_time, total_time, assessment_id))
 
     return jsonify({
-        "message": "Assessment completed",
-        "end_time": end_time,
-        "total_time": total_time
+        "message": "Assessment completed successfully.",
+        "assessment_end_time": assessment_end_time,
     })
 
+# Initialize the database
 init_db()
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    app.run(debug=True)
