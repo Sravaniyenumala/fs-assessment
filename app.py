@@ -10,7 +10,7 @@ from flask_cors import CORS
 # Initialize Flask app
 app = Flask(__name__)
 swagger = Swagger(app)
-CORS(app)  
+CORS(app, resources={r"/*": {"origins": "*"}}) 
 
 IST = pytz.timezone('Asia/Kolkata')
 
