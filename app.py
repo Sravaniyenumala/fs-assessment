@@ -5,10 +5,13 @@ from datetime import datetime
 import os
 from flasgger import Swagger
 import pytz
+from flask_cors import CORS
 
 # Initialize Flask app
 app = Flask(__name__)
-swagger = Swagger(app)  
+swagger = Swagger(app)
+CORS(app)  
+
 IST = pytz.timezone('Asia/Kolkata')
 
 def init_db():
