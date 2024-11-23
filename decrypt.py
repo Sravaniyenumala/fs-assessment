@@ -34,7 +34,7 @@ def decrypt_instructions(encrypted_file='encrypted/INSTRUCTIONS.enc'):
         
         # Write detailed instructions to markdown files
         for filename, content in instructions.items():
-            with open(filename, 'w') as f:
+            with open(filename, 'w',encoding='utf-8') as f:
                 f.write(content)
                 
         print("\n✨ Instructions decrypted successfully!")
